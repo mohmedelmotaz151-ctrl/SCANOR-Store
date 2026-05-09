@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Gamepad2 } from 'lucide-react';
+import ScanorLogo from './ScanorLogo';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function SplashScreen() {
@@ -33,9 +33,7 @@ export default function SplashScreen() {
         }}
         className="relative mb-8"
       >
-        <div className="w-24 h-24 bg-gradient-to-br from-amber-400 to-amber-600 rounded-[2.5rem] flex items-center justify-center shadow-[0_0_60px_rgba(245,158,11,0.4)] relative z-10">
-          <Gamepad2 className="w-12 h-12 text-black" />
-        </div>
+        <ScanorLogo size="xl" className="shadow-[0_0_60px_rgba(245,158,11,0.4)]" />
         
         {/* Animated Rings */}
         <motion.div 

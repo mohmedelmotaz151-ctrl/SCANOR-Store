@@ -17,6 +17,8 @@ import { useLanguage } from "../context/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import UserDrawer from "./UserDrawer";
 
+import ScanorLogo from "./ScanorLogo";
+
 export default function Navbar() {
   const { user, profile, isGuest } = useAuth();
   const { language, setLanguage, t, dir } = useLanguage();
@@ -37,12 +39,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
         <div className="flex items-center gap-8">
           <Link to="/" className="flex items-center gap-2.5 group">
-            <motion.div 
-              whileHover={{ rotate: 10, scale: 1.05 }}
-              className="w-11 h-11 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/20"
-            >
-              <Gamepad2 className="text-black w-6 h-6" />
-            </motion.div>
+            <ScanorLogo size="md" />
             <span className="text-xl sm:text-2xl font-black text-white uppercase italic notranslate hidden xsm:block" translate="no">
               Scanor<span className="text-amber-500 font-sans">STORE</span>
             </span>

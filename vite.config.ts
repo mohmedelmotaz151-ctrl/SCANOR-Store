@@ -22,7 +22,7 @@ export default defineConfig(({mode}) => {
           background_color: '#000000',
           display: 'standalone',
           start_url: '/',
-          id: '/',
+          id: 'com.motaz.storeapp',
           scope: '/',
           lang: 'ar',
           dir: 'rtl',
