@@ -1,0 +1,169 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ---------------------------------------------------------
+    // GLOBAL HELPERS
+    // ---------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Role-based access: Support both hardcoded super-admin and database-flagged admins
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'mohmedelmotaz151@gmail.com' && request.auth.token.email_verified == true) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // ---------------------------------------------------------
+    // DEFAULT DENY
+    // ---------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ---------------------------------------------------------
+    // USERS COLLECTION
+    // ---------------------------------------------------------
+    function isValidUser(data) {
+      return data.uid is string &&
+             data.email is string && data.email.size() <= 256 &&
+             data.isAdmin is bool &&
+             (data.balance is number || !data.keys().hasAll(['balance'])) &&
+             data.keys().hasAll(['uid', 'email', 'isAdmin']) &&
+             data.keys().size() >= 3;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() && request.auth.uid == userId && (
+        isValidUser(incoming()) &&
+        incoming().isAdmin == false &&
+        (!incoming().keys().hasAll(['balance']) || incoming().balance == 0)
+      );
+      
+      allow update: if (
+        (isOwner(userId) && !incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'uid', 'createdAt', 'balance'])) || 
+        isAdmin()
+      ) && isValidUser(incoming());
+    }
+
+    // ---------------------------------------------------------
+    // PACKAGES (Public Read, Admin Write)
+    // ---------------------------------------------------------
+    function isValidPackage(data) {
+      return data.amount is int && data.amount > 0 &&
+             data.price_sar is number &&
+             data.price_sdg is number &&
+             data.keys().hasAll(['amount', 'price_sar', 'price_sdg']);
+    }
+
+    match /packages/{packageId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidPackage(incoming()) && isValidId(packageId);
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------
+    // WALLET REQUESTS
+    // ---------------------------------------------------------
+    function isValidWalletRequest(data) {
+      return data.userId == request.auth.uid &&
+             data.amount is number && data.amount > 0 &&
+             data.status == 'pending' &&
+             data.bank in ['bok', 'rajhi'] &&
+             data.keys().hasAll(['userId', 'amount', 'status', 'bank']);
+    }
+
+    match /wallet_requests/{requestId} {
+      allow get: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidWalletRequest(incoming()) && isValidId(requestId);
+      allow update: if isAdmin() && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+        incoming().status in ['approved', 'rejected']
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------
+    // ACTIVITIES
+    // ---------------------------------------------------------
+    match /activities/{activityId} {
+      allow get: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isAdmin(); // Only system/admin can log activities
+      allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------
+    // ORDERS COLLECTION
+    // ---------------------------------------------------------
+    function isValidOrder(data) {
+      return data.playerId is string && data.playerId.size() <= 64 &&
+             data.status in ['pending_payment', 'pending_verification', 'processing', 'completed', 'failed'] &&
+             data.price is string &&
+             data.amount is int &&
+             data.keys().hasAll(['playerId', 'status', 'price', 'amount', 'userId']);
+    }
+
+    match /orders/{orderId} {
+      // Allow specific GET for tracking
+      allow get: if isValidId(orderId); 
+      // List rules must have auth verification
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+
+      allow create: if (
+        (isSignedIn() && incoming().userId == request.auth.uid) || 
+        (incoming().userId == 'anonymous')
+      ) && isValidOrder(incoming()) && isValidId(orderId);
+
+      allow update: if isAdmin() && (
+        // Admin can update status and metadata
+        isValidOrder(incoming()) && 
+        incoming().userId == existing().userId &&
+        incoming().playerId == existing().playerId
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------
+    // SUPPORT CHATS
+    // ---------------------------------------------------------
+    match /support_chats/{chatId} {
+      allow get: if (isSignedIn() && resource.data.userEmail == request.auth.token.email) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && incoming().userEmail == request.auth.token.email;
+      allow update: if isAdmin() || (isSignedIn() && resource.data.userEmail == request.auth.token.email && incoming().diff(existing()).affectedKeys().hasOnly(['lastMessageAt']));
+
+      match /messages/{messageId} {
+        allow read: if (isSignedIn() && get(/databases/$(database)/documents/support_chats/$(chatId)).data.userEmail == request.auth.token.email) || isAdmin();
+        allow create: if (
+          (isSignedIn() && get(/databases/$(database)/documents/support_chats/$(chatId)).data.userEmail == request.auth.token.email && incoming().role == 'user') ||
+          isAdmin() || 
+          incoming().role == 'ai' // Server integration
+        );
+      }
+    }
+  }
+}
